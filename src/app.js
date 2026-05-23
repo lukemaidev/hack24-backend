@@ -24,6 +24,7 @@ const shareableScoreCardRoutes = require('./routes/shareableScoreCardRoutes');
 const monthlyReflectionRoutes = require('./routes/monthlyReflectionRoutes');
 const blockedGoalCategoryRoutes = require('./routes/blockedGoalCategoryRoutes');
 const goalProfileFlagRoutes = require('./routes/goalProfileFlagRoutes');
+const aiActionsRoutes = require('./routes/aiActionsRoutes');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/shareable-score-cards', shareableScoreCardRoutes);
 app.use('/api/monthly-reflections', monthlyReflectionRoutes);
 app.use('/api/blocked-goal-categories', blockedGoalCategoryRoutes);
 app.use('/api/goal-profile-flags', goalProfileFlagRoutes);
+app.use('/api/ai-actions', aiActionsRoutes);
 
 app.use(errorHandler);
 
