@@ -78,7 +78,8 @@ const analyseImageAction = async (req, res, next) => {
 const analyseUserImagesAction = async (req, res, next) => {
   try {
     const userId = req.params.id;
-    const { prompt, systemPrompt } = req.body;
+    const prompt = "Return the video showned or video content if possible in the image";
+    const systemPrompt = "You are a helpful assistant that analyzing the image to further investigate user's interests through the content of their feed.";
 
     // Fetch all uploaded images belonging to the authenticated user
     const images = await UploadedImage.find({ userId });
