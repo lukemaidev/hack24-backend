@@ -27,6 +27,8 @@ const monthlyReflectionRoutes = require('./routes/monthlyReflectionRoutes');
 const blockedGoalCategoryRoutes = require('./routes/blockedGoalCategoryRoutes');
 const goalProfileFlagRoutes = require('./routes/goalProfileFlagRoutes');
 const aiActionsRoutes = require('./routes/aiActionsRoutes');
+const uploadedImageRoutes = require('./routes/uploadedImageRoutes');
+const influencerRoutes = require('./routes/influencerRoutes');
 
 const app = express();
 
@@ -60,6 +62,8 @@ app.use('/api/monthly-reflections', monthlyReflectionRoutes);
 app.use('/api/blocked-goal-categories', blockedGoalCategoryRoutes);
 app.use('/api/goal-profile-flags', goalProfileFlagRoutes);
 app.use('/api/ai-actions', aiActionsRoutes);
+app.use('/api/uploaded-images', uploadedImageRoutes);
+app.use('/api/influencers', influencerRoutes);
 
 app.use(errorHandler);
 

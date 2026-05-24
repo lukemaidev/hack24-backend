@@ -9,4 +9,5 @@ module.exports = {
   ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
   JWT_SECRET: process.env.JWT_SECRET || 'changeme',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
+  VOYAGE_API_KEY: process.env.VOYAGE_API_KEY || '',
 };

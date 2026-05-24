@@ -1,0 +1,66 @@
+const Influencer = require('../models/Influencer');
+
+// GET /api/influencers
+const getAll = async (req, res, next) => {
+  try {
+    const data = await Influencer.find();
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/influencers/:id
+const getById = async (req, res, next) => {
+  try {
+    const data = await Influencer.findById(req.params.id);
+    if (!data) return res.status(404).json({ success: false, message: 'Influencer not found' });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /api/influencers
+// Body: { accountName, rank?, platform?, sourceCategory?, subscribersFollowers?,
+//         viewsLikesEngagement?, videosPosts?, following?, accountUrl?,
+//         socialBladeProfileUrl?, aiCategoryGuess?, snapshot? }
+const create = async (req, res, next) => {
+  try {
+    const { accountName } = req.body;
+    if (!accountName) {
+      return res.status(400).json({ success: false, message: 'accountName is required' });
+    }
+    const data = await Influencer.create(req.body);
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// PUT /api/influencers/:id
+const update = async (req, res, next) => {
+  try {
+    const data = await Influencer.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    if (!data) return res.status(404).json({ success: false, message: 'Influencer not found' });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /api/influencers/:id
+const remove = async (req, res, next) => {
+  try {
+    const data = await Influencer.findByIdAndDelete(req.params.id);
+    if (!data) return res.status(404).json({ success: false, message: 'Influencer not found' });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getAll, getById, create, update, remove };
