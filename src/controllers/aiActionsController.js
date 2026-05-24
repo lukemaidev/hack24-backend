@@ -2,6 +2,7 @@ const { chat, analyseFeed, generateMentorTag } = require('../services/claudeServ
 const { analyseImages } = require('../services/imageAnalysisService');
 const { matchCategories } = require('../services/categoryMatchService');
 const UploadedImage = require('../models/UploadedImage');
+const User = require('../models/User');
 
 const chatWithClaude = async (req, res, next) => {
   try {
@@ -97,6 +98,23 @@ const analyseUserImagesAction = async (req, res, next) => {
     // Embed the AI description and compare against every unique Source Category
     const categoryMatches = await matchCategories(aiDescription);
 
+    // Build the $set payload for the user's currentCategoryScores map
+    const scoreUpdates = {};
+    for (const { category, similarity } of categoryMatches) {
+      scoreUpdates[`currentCategoryScores.${category}`] = similarity;
+    }
+
+    // Patch the user document with the new scores
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: scoreUpdates },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
     res.json({
       success: true,
       data: {
@@ -104,7 +122,8 @@ const analyseUserImagesAction = async (req, res, next) => {
         imageCount: urls.length,
         imageUrls: urls,
         aiDescription,
-        categoryMatches, // [{ category, similarity }] sorted descending
+        categoryMatches,                                    // [{ category, similarity }] sorted descending
+        currentCategoryScores: Object.fromEntries(updatedUser.currentCategoryScores), // updated scores
       },
     });
   } catch (err) {
