@@ -1,4 +1,5 @@
 const { chat, analyseFeed, generateMentorTag } = require('../services/claudeService');
+const { analyseImage } = require('../services/imageAnalysisService');
 
 const chatWithClaude = async (req, res, next) => {
   try {
@@ -39,4 +40,17 @@ const getMentorTag = async (req, res, next) => {
   }
 };
 
-module.exports = { chatWithClaude, runFeedAnalysis, getMentorTag };
+const analyseImageAction = async (req, res, next) => {
+  try {
+    const { imageUrl, prompt, systemPrompt } = req.body;
+    if (!imageUrl) {
+      return res.status(400).json({ success: false, message: 'imageUrl is required' });
+    }
+    const result = await analyseImage(imageUrl, prompt, systemPrompt);
+    res.json({ success: true, data: { result } });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { chatWithClaude, runFeedAnalysis, getMentorTag, analyseImageAction };

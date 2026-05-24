@@ -1,5 +1,7 @@
 const express = require('express');
+const cors = require('cors');
 const errorHandler = require('./middleware/errorHandler');
+const authRoutes = require('./routes/authRoutes');
 
 const userRoutes = require('./routes/userRoutes');
 const goalProfileRoutes = require('./routes/goalProfileRoutes');
@@ -28,9 +30,11 @@ const aiActionsRoutes = require('./routes/aiActionsRoutes');
 
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.use('/api/auth', authRoutes);
 
 app.use('/api/users', userRoutes);
 app.use('/api/goal-profiles', goalProfileRoutes);
