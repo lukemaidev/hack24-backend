@@ -1,5 +1,6 @@
 const { chat, analyseFeed, generateMentorTag } = require('../services/claudeService');
-const { analyseImage } = require('../services/imageAnalysisService');
+const { analyseImages } = require('../services/imageAnalysisService');
+const { matchCategories } = require('../services/categoryMatchService');
 
 const chatWithClaude = async (req, res, next) => {
   try {
@@ -42,12 +43,31 @@ const getMentorTag = async (req, res, next) => {
 
 const analyseImageAction = async (req, res, next) => {
   try {
-    const { imageUrl, prompt, systemPrompt } = req.body;
-    if (!imageUrl) {
-      return res.status(400).json({ success: false, message: 'imageUrl is required' });
+    const { imageUrl, imageUrls, prompt, systemPrompt } = req.body;
+
+    // Accept either a single imageUrl or an array of imageUrls
+    const urls = imageUrls ?? (imageUrl ? [imageUrl] : null);
+    if (!urls || urls.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Provide "imageUrl" (string) or "imageUrls" (array) in the request body',
+      });
     }
-    const result = await analyseImage(imageUrl, prompt, systemPrompt);
-    res.json({ success: true, data: { result } });
+
+    // 1. Run Claude vision analysis across all images in one message
+    const aiDescription = await analyseImages(urls, prompt, systemPrompt);
+
+    // 2. Embed the AI description and compare against every unique Source Category
+    const categoryMatches = await matchCategories(aiDescription);
+
+    res.json({
+      success: true,
+      data: {
+        imageCount: urls.length,
+        aiDescription,
+        categoryMatches, // [{ category, similarity }] sorted descending
+      },
+    });
   } catch (err) {
     next(err);
   }

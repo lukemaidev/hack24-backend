@@ -1,70 +1,33 @@
 /**
  * scripts/embedInfluencerSnapshots.js
  *
- * For every Influencer that has a `snapshot` URL but no `embeddedSnapshot`:
- *   1. Fetch the image from Supabase storage.
- *   2. Send it to Claude vision to get a rich text description.
- *   3. Embed that description with Voyage AI (voyage-multimodal-3).
- *   4. Save the vector back to `embeddedSnapshot`.
+ * For every Influencer document that has a "Snapshot" text field but no
+ * "embeddedSnapshot" vector, embed the snapshot text with Voyage AI and
+ * save it back as embeddedSnapshot ([Number]).
+ *
+ * NOTE: The raw MongoDB documents use the original column names with spaces
+ * and capitals (e.g. "Snapshot", "Account Name"), so this script queries the
+ * native collection directly to avoid Mongoose field-name mapping issues.
  *
  * Usage:
- *   node scripts/embedInfluencerSnapshots.js
- *
- * Options:
- *   --force   Re-embed even if embeddedSnapshot already exists.
+ *   node scripts/embedInfluencerSnapshots.js           # skip already embedded
+ *   node scripts/embedInfluencerSnapshots.js --force   # re-embed everything
  */
 
 require('dotenv').config();
 
 const mongoose = require('mongoose');
 const { VoyageAIClient } = require('voyageai');
-const Anthropic = require('@anthropic-ai/sdk');
 const connectDB = require('../src/config/db');
-const Influencer = require('../src/models/Influencer');
-const { ANTHROPIC_MODEL, VOYAGE_API_KEY } = require('../src/config/env');
+const { VOYAGE_API_KEY } = require('../src/config/env');
 
 const FORCE = process.argv.includes('--force');
-const CONCURRENCY = 3; // parallel requests at a time
+const CONCURRENCY = 5;
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const voyage = new VoyageAIClient({ apiKey: VOYAGE_API_KEY });
 
 // ---------------------------------------------------------------------------
-// Step 1 – describe the snapshot image with Claude vision
-// ---------------------------------------------------------------------------
-async function describeSnapshot(imageUrl) {
-  const imageRes = await fetch(imageUrl);
-  if (!imageRes.ok) {
-    throw new Error(`Image fetch failed: ${imageRes.status} ${imageRes.statusText} — ${imageUrl}`);
-  }
-
-  const mediaType = imageRes.headers.get('content-type') || 'image/jpeg';
-  const buffer = await imageRes.arrayBuffer();
-  const base64 = Buffer.from(buffer).toString('base64');
-
-  const response = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: 512,
-    system:
-      'You are an analyst describing social media influencer profile snapshots. ' +
-      'Provide a concise, factual description (3–5 sentences) covering the visible ' +
-      'content, style, platform indicators, and any text present.',
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-          { type: 'text', text: 'Describe this influencer snapshot.' },
-        ],
-      },
-    ],
-  });
-
-  return response.content[0].text;
-}
-
-// ---------------------------------------------------------------------------
-// Step 2 – embed the description with Voyage AI
+// Embed a text string with Voyage AI
 // ---------------------------------------------------------------------------
 async function embedText(text) {
   const result = await voyage.embed({
@@ -75,29 +38,30 @@ async function embedText(text) {
 }
 
 // ---------------------------------------------------------------------------
-// Process one influencer
+// Process one raw MongoDB document
 // ---------------------------------------------------------------------------
-async function processInfluencer(influencer) {
-  const label = `[${influencer.accountName ?? influencer._id}]`;
+async function processDoc(collection, doc) {
+  const label = `[${doc['Account Name'] ?? doc._id}]`;
+  const snapshotText = doc['Snapshot'];
 
-  if (!influencer.snapshot) {
-    console.log(`${label} — no snapshot URL, skipping.`);
+  if (!snapshotText || typeof snapshotText !== 'string' || !snapshotText.trim()) {
+    console.log(`${label} — no Snapshot text, skipping.`);
     return;
   }
 
-  if (influencer.embeddedSnapshot?.length && !FORCE) {
-    console.log(`${label} — already embedded (${influencer.embeddedSnapshot.length}d), skipping.`);
+  if (doc.embeddedSnapshot?.length && !FORCE) {
+    console.log(`${label} — already embedded (${doc.embeddedSnapshot.length}d), skipping.`);
     return;
   }
 
   try {
-    console.log(`${label} — describing snapshot…`);
-    const description = await describeSnapshot(influencer.snapshot);
+    const vector = await embedText(snapshotText.trim());
 
-    console.log(`${label} — embedding description…`);
-    const vector = await embedText(description);
+    await collection.updateOne(
+      { _id: doc._id },
+      { $set: { embeddedSnapshot: vector } }
+    );
 
-    await Influencer.findByIdAndUpdate(influencer._id, { embeddedSnapshot: vector });
     console.log(`${label} — saved ${vector.length}-dim embedding. ✓`);
   } catch (err) {
     console.error(`${label} — ERROR: ${err.message}`);
@@ -110,21 +74,50 @@ async function processInfluencer(influencer) {
 async function run() {
   await connectDB();
 
-  const filter = FORCE ? { snapshot: { $exists: true, $ne: null } } : {
-    snapshot: { $exists: true, $ne: null },
-    $or: [{ embeddedSnapshot: { $exists: false } }, { embeddedSnapshot: { $size: 0 } }],
-  };
+  const collection = mongoose.connection.collection('influencers');
 
-  const influencers = await Influencer.find(filter).lean();
-  console.log(`Found ${influencers.length} influencer(s) to embed.`);
+  // ── Diagnostics ────────────────────────────────────────────────────────────
+  const total = await collection.countDocuments();
+  const withSnapshot = await collection.countDocuments({ Snapshot: { $exists: true, $nin: [null, ''] } });
+  const alreadyEmbedded = await collection.countDocuments({ embeddedSnapshot: { $exists: true } });
+  const sample = await collection.findOne();
 
-  // Process in chunks of CONCURRENCY
-  for (let i = 0; i < influencers.length; i += CONCURRENCY) {
-    const chunk = influencers.slice(i, i + CONCURRENCY);
-    await Promise.all(chunk.map(processInfluencer));
+  console.log(`\n── Diagnostics ──────────────────────────────────`);
+  console.log(`  Total influencers     : ${total}`);
+  console.log(`  With Snapshot text    : ${withSnapshot}`);
+  console.log(`  Already embedded      : ${alreadyEmbedded}`);
+  console.log(`  Sample Snapshot       : ${String(sample?.['Snapshot'] ?? '(none)').slice(0, 80)}…`);
+  console.log(`─────────────────────────────────────────────────\n`);
+  // ──────────────────────────────────────────────────────────────────────────
+
+  const filter = FORCE
+    ? { Snapshot: { $exists: true, $nin: [null, ''] } }
+    : {
+        Snapshot: { $exists: true, $nin: [null, ''] },
+        $or: [
+          { embeddedSnapshot: { $exists: false } },
+          { embeddedSnapshot: null },
+        ],
+      };
+
+  const docs = await collection.find(filter).toArray();
+  console.log(`Found ${docs.length} influencer(s) to embed.\n`);
+
+  if (docs.length === 0) {
+    console.log('Nothing to do.');
+    await mongoose.disconnect();
+    return;
   }
 
-  console.log('\nDone.');
+  let done = 0;
+  for (let i = 0; i < docs.length; i += CONCURRENCY) {
+    const chunk = docs.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map((doc) => processDoc(collection, doc)));
+    done += chunk.length;
+    console.log(`── Progress: ${done}/${docs.length} ──`);
+  }
+
+  console.log('\nAll done.');
   await mongoose.disconnect();
 }
 

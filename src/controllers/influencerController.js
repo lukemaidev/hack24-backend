@@ -27,9 +27,9 @@ const getById = async (req, res, next) => {
 //         socialBladeProfileUrl?, aiCategoryGuess?, snapshot? }
 const create = async (req, res, next) => {
   try {
-    const { accountName } = req.body;
+    const accountName = req.body['Account Name'];
     if (!accountName) {
-      return res.status(400).json({ success: false, message: 'accountName is required' });
+      return res.status(400).json({ success: false, message: '"Account Name" is required' });
     }
     const data = await Influencer.create(req.body);
     res.status(201).json({ success: true, data });
