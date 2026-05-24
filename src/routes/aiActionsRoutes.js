@@ -1,5 +1,5 @@
 const express = require('express');
-const { chatWithClaude, runFeedAnalysis, getMentorTag, analyseImageAction } = require('../controllers/aiActionsController');
+const { chatWithClaude, runFeedAnalysis, getMentorTag, analyseImageAction, analyseUserImagesAction } = require('../controllers/aiActionsController');
 
 const router = express.Router();
 
@@ -14,5 +14,9 @@ router.post('/mentor-tag', getMentorTag);
 
 // POST /api/ai-actions/analyse-image
 router.post('/analyse-image', analyseImageAction);
+
+// POST /api/ai-actions/analyse-user-images/:id
+// Fetches all UploadedImage URLs for the given user ID, then runs Claude vision analysis
+router.post('/analyse-user-images/:id', analyseUserImagesAction);
 
 module.exports = router;

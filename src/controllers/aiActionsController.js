@@ -1,6 +1,7 @@
 const { chat, analyseFeed, generateMentorTag } = require('../services/claudeService');
 const { analyseImages } = require('../services/imageAnalysisService');
 const { matchCategories } = require('../services/categoryMatchService');
+const UploadedImage = require('../models/UploadedImage');
 
 const chatWithClaude = async (req, res, next) => {
   try {
@@ -73,4 +74,42 @@ const analyseImageAction = async (req, res, next) => {
   }
 };
 
-module.exports = { chatWithClaude, runFeedAnalysis, getMentorTag, analyseImageAction };
+const analyseUserImagesAction = async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const { prompt, systemPrompt } = req.body;
+
+    // Fetch all uploaded images belonging to the authenticated user
+    const images = await UploadedImage.find({ userId });
+
+    if (!images || images.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No uploaded images found for this user',
+      });
+    }
+
+    const urls = images.map((img) => img.url);
+
+    // Run Claude vision analysis across all images in one message
+    const aiDescription = await analyseImages(urls, prompt, systemPrompt);
+
+    // Embed the AI description and compare against every unique Source Category
+    const categoryMatches = await matchCategories(aiDescription);
+
+    res.json({
+      success: true,
+      data: {
+        userId,
+        imageCount: urls.length,
+        imageUrls: urls,
+        aiDescription,
+        categoryMatches, // [{ category, similarity }] sorted descending
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { chatWithClaude, runFeedAnalysis, getMentorTag, analyseImageAction, analyseUserImagesAction };
