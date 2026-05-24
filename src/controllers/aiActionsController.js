@@ -132,4 +132,77 @@ const analyseUserImagesAction = async (req, res, next) => {
   }
 };
 
-module.exports = { chatWithClaude, runFeedAnalysis, getMentorTag, analyseImageAction, analyseUserImagesAction };
+const predictTargetScoresAction = async (req, res, next) => {
+  try {
+    const userId = req.params.id;
+    const { prompt, systemPrompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ success: false, message: 'prompt is required' });
+    }
+
+    // Fixed system prompt — instructs Claude to return scores as JSON matching targetCategoryScores
+    const baseSystemPrompt = `You are a content interest analyst. Based on the user's goals and interests,
+score each of the following content categories from 0 to 100, where 100 means perfectly aligned with their goals and 0 means no relevance.
+Return ONLY a valid JSON object with exactly these keys and numeric values, no extra text:
+{
+  "Autos & Vehicles": 0,
+  "Comedy": 0,
+  "Entertainment": 0,
+  "Film": 0,
+  "Gaming": 0,
+  "How To & Style": 0,
+  "People & Blogs": 0,
+  "Pets & Animals": 0,
+  "Science & Technology": 0,
+  "Sports": 0,
+  "Education": 0,
+  "News & Politics": 0,
+  "Nonprofit & Activism": 0,
+  "Travel": 0,
+  "Music": 0
+}${systemPrompt ? `\n\nAdditional context: ${systemPrompt}` : ''}`;
+    
+    // 1. Ask Claude to score each category based on the user's prompt
+    const raw = await chat(prompt, baseSystemPrompt);
+    console.log(raw)
+    // 2. Parse the JSON scores Claude returned
+    let categoryScores;
+    try {
+      categoryScores = raw.replace(/```json|```/g, '').trim(); // Remove any code block formatting
+      categoryScores = JSON.parse(categoryScores);
+    } catch {
+      return res.status(500).json({ success: false, message: 'AI returned an unexpected format', raw });
+    }
+
+    // 3. Build the $set payload for the user's targetCategoryScores map
+    const scoreUpdates = {};
+    for (const [category, score] of Object.entries(categoryScores)) {
+      scoreUpdates[`targetCategoryScores.${category}`] = score;
+    }
+
+    // 4. Patch the user document with the predicted target scores
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: scoreUpdates },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        userId,
+        prompt,
+        targetCategoryScores: Object.fromEntries(updatedUser.targetCategoryScores),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { chatWithClaude, runFeedAnalysis, getMentorTag, analyseImageAction, analyseUserImagesAction, predictTargetScoresAction };
